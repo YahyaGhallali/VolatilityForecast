@@ -52,6 +52,7 @@ The project implements and rigorously compares:
 |-------|------|-------------|
 | **GARCH(1,1)** | Econometric | Classical volatility model with Student-t innovations |
 | **GRU** | Deep Learning | Gated Recurrent Unit neural network |
+| **Hybrid** | Ensemble | GARCH Residuals modeled by GRU to capture non-linearities |
 | **Naive Persistence** | Baseline | Random walk benchmark ($\hat{\sigma}_{t+1} = \sigma_t$) |
 
 The study uses **high-frequency intraday data** (1-minute SPY prices from 2008-2021) to construct realized volatility from 5-minute returns, ensuring a high-quality target variable for model evaluation.
@@ -62,22 +63,21 @@ The study uses **high-frequency intraday data** (1-minute SPY prices from 2008-2
 
 ### Primary Results
 
-| Metric | GARCH(1,1) | GRU | Naive | Winner |
-|--------|------------|-----|-------|--------|
-| **MAE** | **0.505** | 0.543 | 0.631 | GARCH (+7%) |
-| **MSE** | **0.998** | 1.121 | 1.579 | GARCH (+12%) |
-| **QLIKE** | **0.317** | 0.395 | 0.508 | GARCH (+20%) |
-| **R²** | — | 0.612 | 0.452 | — |
+| Metric | GARCH(1,1) | GRU | Hybrid | Naive | Winner |
+|--------|------------|-----|--------|-------|--------|
+| **MAE** | 0.507 | 0.543 | **0.436** | 0.632 | Hybrid (+14%) |
+| **MSE** | 1.001 | 1.121 | **0.833** | 1.583 | Hybrid (+17%) |
+| **QLIKE** | 0.318 | 0.395 | **0.249** | 0.506 | Hybrid (+21%) |
 
 ### Key Insights
 
-1. **GARCH dominates on all metrics** — The parsimonious econometric model achieves superior out-of-sample performance during the test period (Jan 2020 – May 2021).
+1. **Hybrid Model Dominates** — The Hybrid Approach (GARCH + GRU Residuals) outperforms both the pure GARCH(1,1) and pure GRU models across all metrics. It effectively captures the non-linear structure in the residuals that GARCH misses.
 
-2. **Both models significantly outperform naive persistence** — Confirming exploitable autocorrelation structure in volatility.
+2. **Significant Improvement in QLIKE** — The Hybrid model achieves a 21% reduction in QLIKE compared to GARCH, indicating superior performance in tail risk assessment and handling extreme volatility events.
 
-3. **QLIKE advantage is economically meaningful** — GARCH's 20% lower QLIKE indicates better risk assessment, particularly important for underestimation penalties.
+3. **Econometric vs Deep Learning** — While pure GARCH beats pure GRU, combining them yields the best results. The Deep Learning component adds value by correcting the rigid parametric assumptions of GARCH.
 
-4. **COVID-19 stress test** — The test period includes extreme market conditions (March 2020 crash), providing a challenging but potentially non-representative evaluation regime.
+4. **COVID-19 Stress Test** — The test period includes the extreme March 2020 volatility. The Hybrid model's ability to adapt to these residuals suggests it is more robust to regime shifts.
 
 ### Limitations
 
@@ -104,6 +104,9 @@ MR Project/
 │   │   │   ├── lstm_volatility_model.keras
 │   │   │   └── sp500_gru_vol_change.keras
 │   │   └── scaler/                # Data preprocessing scalers
+│   │
+│   ├── Hybrid/
+│   │   └── Main.ipynb         # Hybrid GARCH+GRU model implementation
 │   │
 │   ├── Tests/                     # Experimental notebooks
 │   │   ├── ARCH-benchmark.ipynb   # GARCH(1,1) implementation & evaluation
@@ -321,6 +324,21 @@ model = Sequential([
 
 ---
 
+### Hybrid GARCH-GRU Model
+
+#### Methodology
+
+The Hybrid model combines the strengths of both approaches by using GARCH(1,1) to model the linear volatility component and a GRU network to model the residuals (errors).
+
+1. **Stage 1 (Econometric)**: Fit GARCH(1,1) to returns and generate volatility forecasts $\sigma_{GARCH}$.
+2. **Stage 2 (Residual Calculation)**: Compute standardized residuals or forecast errors ($e_t = \sigma_{realized} - \sigma_{GARCH}$).
+3. **Stage 3 (Deep Learning)**: Train GRU to predict these residuals $\hat{e}_{t+1}$ using past data.
+4. **Stage 4 (Ensemble)**: Combine forecasts: $\sigma_{final} = \sigma_{GARCH} + \hat{e}_{t+1}$.
+
+This approach allows the neural network to focus solely on the *structure that GARCH misses*, rather than learning the entire volatility dynamic from scratch.
+
+---
+
 ## Evaluation Framework
 
 ### Loss Functions
@@ -365,9 +383,10 @@ def diebold_mariano_test(actual, pred1, pred2, horizon=1):
 
 | Model | MAE | MSE | QLIKE | Improvement over Naive |
 |-------|-----|-----|-------|------------------------|
-| Naive Baseline | 0.631 | 1.579 | 0.508 | — |
-| **GARCH(1,1)** | **0.505** | **0.998** | **0.317** | 20% MAE, 37% QLIKE |
-| GRU | 0.543 | 1.121 | 0.395 | 14% MAE, 22% QLIKE |
+| Naive Baseline | 0.632 | 1.583 | 0.506 | — |
+| GARCH(1,1) | 0.507 | 1.001 | 0.318 | 20% MAE |
+| GRU (Pure) | 0.543 | 1.121 | 0.395 | 14% MAE |
+| **Hybrid (GARCH+GRU)** | **0.436** | **0.833** | **0.249** | **31% MAE, 51% QLIKE** |
 
 ### Visual Analysis
 
@@ -379,9 +398,9 @@ Both models:
 
 ### Interpretation
 
-1. **GARCH's efficiency**: With only 4-5 parameters, GARCH captures first-order volatility dynamics parsimoniously
-2. **GRU's handicap**: Using only squared returns limits neural network's potential
-3. **Regime sensitivity**: COVID-19 period may favor mean-reverting models
+1. **Hybrid Efficiency**: The Hybrid model's success confirms that GARCH explains most of the variance, but systematic errors remain. The GRU component successfully learns to predict these residuals, effectively "boosting" the GARCH forecast.
+2. **GARCH's Role**: Acts as a robust baseline, capturing the heavy-tailed distribution (Student-t) better than a pure neural network with MSE loss.
+3. **Regime sensitivity**: The large improvement suggests that during high-volatility regimes (COVID-19), the relationship between returns and volatility becomes non-linear in ways simple GARCH cannot capture.
 
 ---
 
@@ -429,6 +448,7 @@ Both models:
 | `Desc-stats.ipynb` | Exploratory analysis (skewness, kurtosis, Hurst) |
 | `ARCH-benchmark.ipynb` | GARCH model implementation |
 | `GRU-benchmark.ipynb` | GRU training and evaluation |
+| `Hybrid/Main.ipynb` | **Hybrid GARCH+GRU model** (Best Performer) |
 | `GRU-GARCH-Benchmark.ipynb` | Head-to-head comparison | You want direct comparison results |
 | `SP500_GK-vol-GRU-comp-GARCH.ipynb` | Garman-Klass volatility experiments | You want alternative volatility measures |
 
