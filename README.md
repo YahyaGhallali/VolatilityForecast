@@ -35,8 +35,6 @@
 - [Results](#results)
 - [Future Directions](#future-directions)
 - [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Citation](#citation)
 
 ---
 
@@ -83,7 +81,7 @@ The study uses **high-frequency intraday data** (1-minute SPY prices from 2008-2
 
 - GRU uses only squared returns as input (no VIX, volume, sentiment features)
 - No formal Diebold-Mariano statistical significance test conducted
-- Fixed train/test split without rolling window evaluation
+- Fixed train/test split without rolling window evaluation (using rolling window could biais results *Persistence problem*)
 - Test period dominated by exceptional market conditions
 
 ---
@@ -97,7 +95,7 @@ MR Project/
 │   │   ├── dataset/               # Raw and processed data
 │   │   │   ├── spy_1min_2008_2021_cleaned.csv    # Primary dataset
 │   │   │   ├── spy_5min_2008_2021_realized_vol.csv
-│   │   │   ├── eurusd*.csv        # EUR/USD datasets
+│   │   │   ├── eurusd.csv        # EUR/USD datasets
 │   │   │   └── ...
 │   │   ├── FAISS/                 # Vector indices for retrieval
 │   │   ├── model/                 # Saved Keras/TensorFlow models
@@ -111,15 +109,12 @@ MR Project/
 │   ├── Tests/                     # Experimental notebooks
 │   │   ├── ARCH-benchmark.ipynb   # GARCH(1,1) implementation & evaluation
 │   │   ├── GRU-benchmark.ipynb    # GRU model training & evaluation
-│   │   ├── GRU-GARCH-Benchmark.ipynb  # Head-to-head comparison
 │   │   ├── Desc-stats.ipynb       # Exploratory data analysis
 │   │   ├── DataEngineering.ipynb  # Data preprocessing pipeline
 │   │   ├── SP500_GK-vol-GRU-comp-GARCH.ipynb  # Garman-Klass volatility
 │   │   ├── SP500-Close_vol-GRU-comp-GARCH.ipynb
 │   │   ├── S&P500_vol_change_LSTM.ipynb
 │   │   ├── S&P500_vol_LSTM_naive.ipynb
-│   │   ├── RNN.ipynb              # RNN experiments
-│   │   ├── Dataset.ipynb          # Data exploration
 │   │   └── utils/
 │   │       └── Features.py        # Feature engineering utilities
 │   │
@@ -182,14 +177,14 @@ MR Project/
 |---------|---------|---------|
 | `tensorflow` | ≥2.20.0 | Deep learning framework (GRU/LSTM) |
 | `arch` | ≥8.0.0 | GARCH model implementation |
-| `faiss-cpu` | ≥1.13.1 | Similarity search for retrieval |
+| `faiss-cpu` | ≥1.13.1 | Similarity search for retrieval (optional) |
 | `pandas` | ≥2.3.3 | Data manipulation |
 | `numpy` | ≥2.3.5 | Numerical computing |
 | `scikit-learn` | ≥1.7.2 | Preprocessing & metrics |
 | `statsmodels` | ≥0.14.5 | Statistical tests |
 | `yfinance` | ≥0.2.66 | Financial data acquisition |
 | `matplotlib` / `seaborn` | — | Visualization |
-| `chronos-forecasting` | ≥2.1.0 | Foundation model experiments |
+| `chronos-forecasting` | ≥2.1.0 | Foundation model experiments (optional) |
 
 ---
 
@@ -211,8 +206,6 @@ MR Project/
 |-----|--------|------------|
 | **Training** | 2008 – Dec 2019 | 90% |
 | **Testing** | Jan 2020 – May 2021 | 10% |
-
-> ⚠️ **Note:** The test period includes the COVID-19 market crash (March 2020), providing a stress test scenario but potentially non-representative conditions.
 
 ---
 
@@ -238,7 +231,7 @@ $$RV_t^{overnight} = \left(r_t^{overnight}\right)^2$$
 
 #### Scaling
 
-The variance is scaled to match GARCH percentage-return conventions:
+The variance is scaled to match GARCH conventions:
 
 $$\sigma_t = \sqrt{RV_t^{total} \times 10,000}$$
 
@@ -248,7 +241,7 @@ $$\sigma_t = \sqrt{RV_t^{total} \times 10,000}$$
 |----------|---------------|
 | 5-minute sampling | Balances noise reduction vs. information loss (Andersen et al., 2001) |
 | Overnight inclusion | Captures earnings, macro releases, and global market movements |
-| ×10,000 scaling | Standard GARCH convention for percentage returns |
+| ×10,000 | Scaling for GARCH model |
 
 ---
 
@@ -307,6 +300,53 @@ forecasts = result.forecast(start=split_date, method="analytic")
 | **Loss** | Mean Squared Error |
 | **Regularization** | Dropout (0.3), Early Stopping (patience=15), LR Reduction |
 
+#### Optimizer
+
+##### Adam Optimizer specification
+
+- Each parameter has its own learning rate adapted based on first and second moment estimates of gradients.
+
+$$
+\theta_t = \theta_{t-1} - \eta \frac{\hat{m_t}}{\sqrt{\hat{v_t}} + \epsilon}
+$$
+
+Where:
+
+- $\hat{m_t}$ = Bias-corrected 1st moment estimate (Momentum)
+
+$$
+\hat{m_t} = \frac{m_t}{1 - \beta_1^t}
+$$
+
+- $\hat{v_t}$ = Bias-corrected 2nd moment estimate (RMSProp)
+
+$$
+\hat{v_t} = \frac{v_t}{1 - \beta_2^t}
+$$
+
+- $m_t$ = Exponentially decaying average of past gradients (1st moment), prevents from vanishing gradients.
+
+$$
+m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t
+$$
+
+- $v_t$ = Exponentially decaying average of past squared gradients (2nd moment), prevents from exploding gradients.
+
+$$
+v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+$$
+
+- $g_t$ = Gradient at time step t
+
+$$
+g_t = \nabla_{\theta} J(\theta_{t-1})
+$$
+
+- $\eta$ = Learning rate
+- $\beta_1$ = Momentum Coefficient, Decay rate for first moment estimates (typically 0.9)
+- $\beta_2$ = Sclaing Coefficient, Decay rates for moment estimates (typically 0.999)
+- $\epsilon$ = Small constant for numerical stability
+
 **Implementation:**
 
 ```python
@@ -331,11 +371,39 @@ model = Sequential([
 The Hybrid model combines the strengths of both approaches by using GARCH(1,1) to model the linear volatility component and a GRU network to model the residuals (errors).
 
 1. **Stage 1 (Econometric)**: Fit GARCH(1,1) to returns and generate volatility forecasts $\sigma_{GARCH}$.
-2. **Stage 2 (Residual Calculation)**: Compute standardized residuals or forecast errors ($e_t = \sigma_{realized} - \sigma_{GARCH}$).
-3. **Stage 3 (Deep Learning)**: Train GRU to predict these residuals $\hat{e}_{t+1}$ using past data.
-4. **Stage 4 (Ensemble)**: Combine forecasts: $\sigma_{final} = \sigma_{GARCH} + \hat{e}_{t+1}$.
+
+##### Illustration of GARCH predictions
+
+![alt text](./Docs/Illustrations/README/image.png)
+
+1. **Stage 2 (Residual Calculation)**: Compute standardized residuals or forecast errors ($e_t = \sigma_{realized} - \sigma_{GARCH}$).
+
+##### Illustration of Residuals and analysis
+
+![alt text](./Docs/Illustrations/README/image-1.png)
+2. **Stage 3 (Deep Learning)**: Train GRU to predict these residuals $\hat{e}_{t+1}$ using past data.
+
+##### Illustration of GRU learning residual patterns
+
+![alt text](./Docs/Illustrations/README/image-2.png)
+3. **Stage 4 (Ensemble)**: Combine forecasts: $\sigma_{final} = \sigma_{GARCH} + \hat{e}_{t+1}$.
 
 This approach allows the neural network to focus solely on the *structure that GARCH misses*, rather than learning the entire volatility dynamic from scratch.
+
+###### Illustration of Hybrid Forecast
+
+![alt text](./Docs/Illustrations/README/image-3.png)
+
+#### GRU Architecture for Residuals
+
+| Component | Specification |
+|-----------|---------------|
+| **Lookback** | 10 days of past residuals |
+| **Horizon** | 1 day ahead |
+| **Features** | Residuals, Daily Returns |
+| **Optimizer** | Adam |
+| **Loss** | Mean Squared Error |
+| **Regularization** | Dropout (0.3), Early Stopping (patience=15), LR Reduction |
 
 ---
 
@@ -359,21 +427,7 @@ This approach allows the neural network to focus solely on the *structure that G
 
 1. **Naive Persistence** — Minimum threshold ($\hat{\sigma}_{t+1} = \sigma_t$)
 2. **GARCH(1,1)** — Econometric standard to beat
-3. **HAR-RV** — For realized volatility forecasting (uses daily, weekly, monthly lags)
-
-<!-- ### Statistical Significance
-
-For production use, apply the **Diebold-Mariano Test**:
-
-```python
-def diebold_mariano_test(actual, pred1, pred2, horizon=1):
-    e1 = (actual - pred1)**2
-    e2 = (actual - pred2)**2
-    d = e1 - e2
-    dm_stat = np.mean(d) / np.sqrt(np.var(d) / len(d))
-    p_value = 2 * (1 - stats.norm.cdf(abs(dm_stat)))
-    return dm_stat, p_value
-``` -->
+3. **GRU** — Deep learning baseline using GRU
 
 ---
 
@@ -387,14 +441,6 @@ def diebold_mariano_test(actual, pred1, pred2, horizon=1):
 | GARCH(1,1) | 0.507 | 1.001 | 0.318 | 20% MAE |
 | GRU (Pure) | 0.543 | 1.121 | 0.395 | 14% MAE |
 | **Hybrid (GARCH+GRU)** | **0.436** | **0.833** | **0.249** | **31% MAE, 51% QLIKE** |
-
-### Visual Analysis
-
-Both models:
-
-- Track broad volatility dynamics (spikes and troughs)
-- Underestimate extreme spikes (March 2020 COVID crash)
-- Capture mean-reversion patterns
 
 ### Interpretation
 
@@ -454,25 +500,9 @@ Both models:
 
 ---
 
-## Utility Functions
-
-### Feature Engineering (`utils/Features.py`)
-
-```python
-from utils.Features import calculate_garman_klass_volatility, create_sequences
-
-# Garman-Klass volatility estimator
-gk_vol = calculate_garman_klass_volatility(ohlc_df)
-
-# Create sequences for time series forecasting
-X, y = create_sequences(data, lookback=20, horizon=1, feature_cols=["Return"])
-```
-
----
-
 ## Acknowledgments
 
-- **Data**: SPY intraday prices sourced via standard financial data providers
+- **Data**: SPY intraday prices sourced via kaggle and yfinance
 - **Libraries**: TensorFlow, arch, scikit-learn, pandas ecosystems
 - **Literature**: Andersen et al. (2001), Patton (2011), Hansen & Lunde (2005)
 
