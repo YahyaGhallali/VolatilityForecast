@@ -1,515 +1,119 @@
-# Realized Volatility Forecasting: Deep Learning vs. Econometric Benchmarks
+# Realized Volatility Forecasting: Hybrid GARCH-GRU vs. Econometric Benchmarks
 
 <div align="center">
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.20+-orange.svg)](https://tensorflow.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Research-yellow.svg)]()
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue)]()
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.X-orange)]()
+[![Status](https://img.shields.io/badge/Status-Research%20Complete-green)]()
 
-**A comprehensive empirical study comparing GRU-based deep learning architectures against classical GARCH econometric models for one-day-ahead realized volatility forecasting on the S&P 500 index.**
-
-[Key Findings](#key-findings) •
-[Installation](#installation) •
-[Usage](#usage) •
-[Methodology](#methodology) •
-[Results](#results) •
-[Documentation](#documentation)
+**A quantitative research framework comparing Deep Learning, Econometric, and Hybrid methodologies for forecasting S&P 500 Realized Volatility.**
 
 </div>
 
 ---
 
-## Table of Contents
+## Executive Summary
 
-- [Overview](#overview)
-- [Key Findings](#key-findings)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Data](#data)
-- [Methodology](#methodology)
-  - [Realized Volatility Construction](#realized-volatility-construction)
-  - [GARCH Benchmark](#garch-benchmark)
-  - [GRU Neural Network](#gru-neural-network)
-- [Evaluation Framework](#evaluation-framework)
-- [Results](#results)
-- [Future Directions](#future-directions)
-- [Documentation](#documentation)
+This project investigates whether flexible, data-driven deep learning models can enhance the predictive power of classical parametric econometric models in financial volatility forecasting.
 
----
+Using high-frequency **S&P 500 (SPY)** data from 2008 to 2021, we benchmark **GARCH(1,1)** against **GRU (Gated Recurrent Units)** networks. The study culminates in a **Hybrid GARCH-GRU** model that processes GARCH residuals using deep learning, achieving a **~14% reduction in MAE** and a **~21% reduction in QLIKE** loss compared to the standard econometric benchmark.
 
-## Overview
-
-This research project investigates a fundamental question in quantitative finance:
-
-> **Can flexible, data-driven deep learning models capture volatility dynamics that parametric econometric specifications miss, or do the additional degrees of freedom lead to overfitting without predictive gain?**
-
-The project implements and rigorously compares:
-
-| Model | Type | Description |
-|-------|------|-------------|
-| **GARCH(1,1)** | Econometric | Classical volatility model with Student-t innovations |
-| **GRU** | Deep Learning | Gated Recurrent Unit neural network |
-| **Hybrid** | Ensemble | GARCH Residuals modeled by GRU to capture non-linearities |
-| **Naive Persistence** | Baseline | Random walk benchmark ($\hat{\sigma}_{t+1} = \sigma_t$) |
-
-The study uses **high-frequency intraday data** (1-minute SPY prices from 2008-2021) to construct realized volatility from 5-minute returns, ensuring a high-quality target variable for model evaluation.
-
----
+> **[Read the Principal Research Report](Docs/Report/Main.pdf)** for the complete theoretical framework and detailed analysis.
 
 ## Key Findings
 
-### Primary Results
+Our empirical results demonstrate that while pure Deep Learning models struggle to outperform GARCH due to the complexity of volatility clustering, a Hybrid approach yields superior results by combining the strengths of both:
 
-| Metric | GARCH(1,1) | GRU | Hybrid | Naive | Winner |
-|--------|------------|-----|--------|-------|--------|
-| **MAE** | 0.507 | 0.543 | **0.436** | 0.632 | Hybrid (+14%) |
-| **MSE** | 1.001 | 1.121 | **0.833** | 1.583 | Hybrid (+17%) |
-| **QLIKE** | 0.318 | 0.395 | **0.249** | 0.506 | Hybrid (+21%) |
+| Model | MAE | MSE | QLIKE | Improvement (MAE) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Naive Baseline** | 0.632 | 1.583 | 0.506 | — |
+| **GARCH(1,1)** (Student-t) | 0.507 | 1.001 | 0.318 | +19.8% vs Naive |
+| **GRU** (Pure) | 0.543 | 1.121 | 0.395 | +14.1% vs Naive |
+| **Hybrid GARCH-GRU** | **0.436** | **0.833** | **0.249** | **+14.0% vs GARCH** |
 
-### Key Insights
-
-1. **Hybrid Model Dominates** — The Hybrid Approach (GARCH + GRU Residuals) outperforms both the pure GARCH(1,1) and pure GRU models across all metrics. It effectively captures the non-linear structure in the residuals that GARCH misses.
-
-2. **Significant Improvement in QLIKE** — The Hybrid model achieves a 21% reduction in QLIKE compared to GARCH, indicating superior performance in tail risk assessment and handling extreme volatility events.
-
-3. **Econometric vs Deep Learning** — While pure GARCH beats pure GRU, combining them yields the best results. The Deep Learning component adds value by correcting the rigid parametric assumptions of GARCH.
-
-4. **COVID-19 Stress Test** — The test period includes the extreme March 2020 volatility. The Hybrid model's ability to adapt to these residuals suggests it is more robust to regime shifts.
-
-### Limitations
-
-- GRU uses only squared returns as input (no VIX, volume, sentiment features)
-- No formal Diebold-Mariano statistical significance test conducted
-- Fixed train/test split without rolling window evaluation (using rolling window could biais results *Persistence problem*)
-- Test period dominated by exceptional market conditions
-
----
+*Results based on Out-of-Sample testing (Jan 2020 – May 2021).*
 
 ## Project Structure
 
-```
+The repository is organized to separate production-candidate models from experimental benchmarks.
+
+```plaintext
 MR Project/
 ├── Code/
-│   ├── Data/
-│   │   ├── dataset/               # Raw and processed data
-│   │   │   ├── spy_1min_2008_2021_cleaned.csv    # Primary dataset
-│   │   │   ├── spy_5min_2008_2021_realized_vol.csv
-│   │   │   ├── eurusd.csv        # EUR/USD datasets
-│   │   │   └── ...
-│   │   ├── FAISS/                 # Vector indices for retrieval
-│   │   ├── model/                 # Saved Keras/TensorFlow models
-│   │   │   ├── lstm_volatility_model.keras
-│   │   │   └── sp500_gru_vol_change.keras
-│   │   └── scaler/                # Data preprocessing scalers
-│   │
 │   ├── Hybrid/
-│   │   └── Main.ipynb         # Hybrid GARCH+GRU model implementation
+│   │   └── garch-gru-bench.ipynb      # Hybrid GARCH-GRU implementation (Best Model)
 │   │
-│   ├── Tests/                     # Experimental notebooks
-│   │   ├── ARCH-benchmark.ipynb   # GARCH(1,1) implementation & evaluation
-│   │   ├── GRU-benchmark.ipynb    # GRU model training & evaluation
-│   │   ├── Desc-stats.ipynb       # Exploratory data analysis
-│   │   ├── DataEngineering.ipynb  # Data preprocessing pipeline
-│   │   ├── SP500_GK-vol-GRU-comp-GARCH.ipynb  # Garman-Klass volatility
-│   │   ├── SP500-Close_vol-GRU-comp-GARCH.ipynb
-│   │   ├── S&P500_vol_change_LSTM.ipynb
-│   │   ├── S&P500_vol_LSTM_naive.ipynb
-│   │   └── utils/
-│   │       └── Features.py        # Feature engineering utilities
+│   ├── Tests/                         # Experimental Benchmarks
+│   │   ├── ARCH-benchmark.ipynb       # Econometric GARCH(1,1) baseline
+│   │   ├── GRU-benchmark.ipynb        # Pure Deep Learning GRU baseline
+│   │   ├── DataEngineering.ipynb      # High-frequency data cleaning pipeline
+│   │   ├── Desc-stats.ipynb           # Statistical analysis (ADF, Hurst, ACF/PACF)
+│   │   └── ...
 │   │
-│   ├── DataEngineering/           # Production data pipelines
-│   ├── pyproject.toml             # Project dependencies
-│   └── README.md                  # This file
+│   ├── Data/                          # Dataset artifacts
+│   └── utils/
+│       └── Features.py                # Volatility calculation & sequence generation
 │
-├── Docs/
-│   ├── report/
-│   │   └── Realized_Volatility_Forecasting_Report.md  # Full technical report
-│   ├── Evaluation.md              # Evaluation framework guide
-│   ├── Retrieval Augmented Forecasting Advancement.md
-│   ├── keywords.md
-│   ├── Embeddings/
-│   ├── Illustrations/
-│   └── papers/
-│
-└── README_RAF.md                  # Retrieval-Augmented Forecasting overview
+└── Docs/                              # Research documentation & Illustrations
 ```
 
----
+## Methodology
 
-## Installation
+### 1. Data Engineering
 
-### Prerequisites
+We construct a robust target variable, **Daily Realized Volatility**, by aggregating high-frequency returns:
 
-- Python 3.12 or higher
-- pip or uv package manager (preferably uv)
+* **Intraday:** Sum of squared 5-minute returns.
+* **Overnight:** Squared return between previous close and current open.
+* **Validation:** Data is split chronologically (Train: 2008-2019, Test: 2020-2021) to respect time-series causality.
 
-### Setup
+### 2. Modeling Approaches
+
+#### A. Econometric Benchmark (ARCH-benchmark.ipynb)
+
+Standard **GARCH(1,1)** with Student-t innovations. This model captures volatility clustering and heavy tails but is limited by its linear parametric assumptions.
+
+#### B. Deep Learning Benchmark (GRU-benchmark.ipynb)
+
+A **Gated Recurrent Unit (GRU)** network taking raw squared returns as input. While flexible, the pure GRU struggles to learn the "level" of volatility as effectively as GARCH during extreme shifts (e.g., COVID-19 crash).
+
+#### C. Hybrid Approach (garch-gru-bench.ipynb)
+
+The proposed solution uses a residual learning strategy:
+
+1. **Fit GARCH(1,1)** to capture the linear volatility component.
+2. **Extract Residuals:** Calculate forecast errors ($e_t = \sigma_{realized} - \sigma_{GARCH}$).
+3. **Train GRU:** The network predicts the *nonlinear* residual component using past residuals and returns.
+4. **Ensemble:** Final Forecast = $\sigma_{GARCH} + \hat{e}_{GRU}$.
+
+## Installation & Usage
 
 1. **Clone the repository:**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/yourusername/mr-project.svg
    cd "MR Project/Code"
    ```
 
-2. **Create virtual environment:**
+2. **Install dependencies:**
+   It is recommended to use a virtual environment.
 
    ```bash
    python -m venv .venv
-   # Windows
-   .venv\Scripts\activate
-   # Linux/macOS
-   source .venv/bin/activate
+   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+   pip install -r requirements.txt
    ```
 
-3. **Install dependencies:**
-
-   ```bash
-   pip install -e .
-   # Or using uv
-   uv sync
-   ```
-
-### Key Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `tensorflow` | ≥2.20.0 | Deep learning framework (GRU/LSTM) |
-| `arch` | ≥8.0.0 | GARCH model implementation |
-| `faiss-cpu` | ≥1.13.1 | Similarity search for retrieval (optional) |
-| `pandas` | ≥2.3.3 | Data manipulation |
-| `numpy` | ≥2.3.5 | Numerical computing |
-| `scikit-learn` | ≥1.7.2 | Preprocessing & metrics |
-| `statsmodels` | ≥0.14.5 | Statistical tests |
-| `yfinance` | ≥0.2.66 | Financial data acquisition |
-| `matplotlib` / `seaborn` | — | Visualization |
-| `chronos-forecasting` | ≥2.1.0 | Foundation model experiments (optional) |
-
----
-
-## Data
-
-### Primary Dataset
-
-| Attribute | Value |
-|-----------|-------|
-| **Ticker** | SPY (S&P 500 ETF) |
-| **Frequency** | 1-minute intraday |
-| **Period** | January 2008 – May 2021 |
-| **Source** | `spy_1min_2008_2021_cleaned.csv` |
-| **Size** | ~3,300 trading days |
-
-### Train/Test Split
-
-| Set | Period | Percentage |
-|-----|--------|------------|
-| **Training** | 2008 – Dec 2019 | 90% |
-| **Testing** | Jan 2020 – May 2021 | 10% |
-
----
-
-## Methodology
-
-### Realized Volatility Construction
-
-The daily realized variance is computed as the sum of **intraday** and **overnight** components:
-
-$$RV_t^{total} = RV_t^{intraday} + RV_t^{overnight}$$
-
-#### Intraday Component (5-minute returns)
-
-$$r_{t,i} = \ln\left(\frac{P_{t,i}}{P_{t,i-1}}\right)$$
-
-$$RV_t^{intraday} = \sum_{i=1}^{N} r_{t,i}^2$$
-
-#### Overnight Component
-
-$$r_t^{overnight} = \ln\left(\frac{P_{t,open}}{P_{t-1,close}}\right)$$
-
-$$RV_t^{overnight} = \left(r_t^{overnight}\right)^2$$
-
-#### Scaling
-
-The variance is scaled to match GARCH conventions:
-
-$$\sigma_t = \sqrt{RV_t^{total} \times 10,000}$$
-
-**Design Choices:**
-
-| Decision | Justification |
-|----------|---------------|
-| 5-minute sampling | Balances noise reduction vs. information loss (Andersen et al., 2001) |
-| Overnight inclusion | Captures earnings, macro releases, and global market movements |
-| ×10,000 | Scaling for GARCH model |
-
----
-
-### GARCH Benchmark
-
-#### Model Specification
-
-$$r_t = \mu + \epsilon_t, \quad \epsilon_t = \sigma_t z_t, \quad z_t \sim t_\nu$$
-
-$$\sigma_t^2 = \omega + \alpha \epsilon_{t-1}^2 + \beta \sigma_{t-1}^2$$
-
-| Parameter | Interpretation |
-|-----------|----------------|
-| $\mu$ | Constant mean return |
-| $\omega$ | Long-run variance floor |
-| $\alpha$ | Shock impact (ARCH effect) |
-| $\beta$ | Persistence (GARCH effect) |
-| $\nu$ | Degrees of freedom (Student-t) |
-
-**Implementation:**
-
-```python
-from arch import arch_model
-
-model = arch_model(returns, vol="Garch", p=1, q=1, dist="t", mean="constant")
-result = model.fit(last_obs=split_date, disp="off")
-forecasts = result.forecast(start=split_date, method="analytic")
-```
-
----
-
-### GRU Neural Network
-
-#### Architecture
-
-```
-┌─────────────────────────────────────┐
-│     Input: (20, 1) - Lookback       │
-├─────────────────────────────────────┤
-│   GRU(64 units, tanh activation)    │
-├─────────────────────────────────────┤
-│        Dropout(0.3)                 │
-├─────────────────────────────────────┤
-│     Dense(32, ReLU activation)      │
-├─────────────────────────────────────┤
-│   Dense(1, Linear) - Forecast       │
-└─────────────────────────────────────┘
-```
-
-| Component | Specification |
-|-----------|---------------|
-| **Lookback** | 20 days (~1 trading month) |
-| **Horizon** | 1 day ahead |
-| **Features** | Squared daily returns |
-| **Optimizer** | Adam |
-| **Loss** | Mean Squared Error |
-| **Regularization** | Dropout (0.3), Early Stopping (patience=15), LR Reduction |
-
-#### Optimizer
-
-##### Adam Optimizer specification
-
-- Each parameter has its own learning rate adapted based on first and second moment estimates of gradients.
-
-$$
-\theta_t = \theta_{t-1} - \eta \frac{\hat{m_t}}{\sqrt{\hat{v_t}} + \epsilon}
-$$
-
-Where:
-
-- $\hat{m_t}$ = Bias-corrected 1st moment estimate (Momentum)
-
-$$
-\hat{m_t} = \frac{m_t}{1 - \beta_1^t}
-$$
-
-- $\hat{v_t}$ = Bias-corrected 2nd moment estimate (RMSProp)
-
-$$
-\hat{v_t} = \frac{v_t}{1 - \beta_2^t}
-$$
-
-- $m_t$ = Exponentially decaying average of past gradients (1st moment), prevents from vanishing gradients.
-
-$$
-m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t
-$$
-
-- $v_t$ = Exponentially decaying average of past squared gradients (2nd moment), prevents from exploding gradients.
-
-$$
-v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-$$
-
-- $g_t$ = Gradient at time step t
-
-$$
-g_t = \nabla_{\theta} J(\theta_{t-1})
-$$
-
-- $\eta$ = Learning rate
-- $\beta_1$ = Momentum Coefficient, Decay rate for first moment estimates (typically 0.9)
-- $\beta_2$ = Sclaing Coefficient, Decay rates for moment estimates (typically 0.999)
-- $\epsilon$ = Small constant for numerical stability
-
-**Implementation:**
-
-```python
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import GRU, Dense, Dropout, Input
-
-model = Sequential([
-    Input(shape=(20, 1)),
-    GRU(units=64, return_sequences=False, activation="tanh"),
-    Dropout(0.3),
-    Dense(32, activation="relu"),
-    Dense(1, activation="linear"),
-])
-```
-
----
-
-### Hybrid GARCH-GRU Model
-
-#### Methodology
-
-The Hybrid model combines the strengths of both approaches by using GARCH(1,1) to model the linear volatility component and a GRU network to model the residuals (errors).
-
-1. **Stage 1 (Econometric)**: Fit GARCH(1,1) to returns and generate volatility forecasts $\sigma_{GARCH}$.
-
-##### Illustration of GARCH predictions
-
-![alt text](./Docs/Illustrations/README/image.png)
-
-1. **Stage 2 (Residual Calculation)**: Compute standardized residuals or forecast errors ($e_t = \sigma_{realized} - \sigma_{GARCH}$).
-
-##### Illustration of Residuals and analysis
-
-![alt text](./Docs/Illustrations/README/image-1.png)
-2. **Stage 3 (Deep Learning)**: Train GRU to predict these residuals $\hat{e}_{t+1}$ using past data.
-
-##### Illustration of GRU learning residual patterns
-
-![alt text](./Docs/Illustrations/README/image-2.png)
-3. **Stage 4 (Ensemble)**: Combine forecasts: $\sigma_{final} = \sigma_{GARCH} + \hat{e}_{t+1}$.
-
-This approach allows the neural network to focus solely on the *structure that GARCH misses*, rather than learning the entire volatility dynamic from scratch.
-
-###### Illustration of Hybrid Forecast
-
-![alt text](./Docs/Illustrations/README/image-3.png)
-
-#### GRU Architecture for Residuals
-
-| Component | Specification |
-|-----------|---------------|
-| **Lookback** | 10 days of past residuals |
-| **Horizon** | 1 day ahead |
-| **Features** | Residuals, Daily Returns |
-| **Optimizer** | Adam |
-| **Loss** | Mean Squared Error |
-| **Regularization** | Dropout (0.3), Early Stopping (patience=15), LR Reduction |
-
----
-
-## Evaluation Framework
-
-### Loss Functions
-
-| Metric | Formula | Use Case |
-|--------|---------|----------|
-| **MAE** | $\frac{1}{n}\sum\|\hat{\sigma}_t - \sigma_t\|$ | Robust to outliers |
-| **MSE** | $\frac{1}{n}\sum(\hat{\sigma}_t - \sigma_t)^2$ | Penalizes large errors |
-| **QLIKE** | $\frac{1}{n}\sum\left(\frac{\sigma_t^2}{\hat{\sigma}_t^2} - \ln\frac{\sigma_t^2}{\hat{\sigma}_t^2} - 1\right)$ | Economically motivated |
-
-**QLIKE** is the preferred metric for volatility forecasting because:
-
-- Derived from Gaussian log-likelihood for variance
-- Penalizes underestimation more heavily (risk management)
-- Robust to noise in realized volatility proxy (Patton, 2011)
-
-### Benchmark Hierarchy
-
-1. **Naive Persistence** — Minimum threshold ($\hat{\sigma}_{t+1} = \sigma_t$)
-2. **GARCH(1,1)** — Econometric standard to beat
-3. **GRU** — Deep learning baseline using GRU
-
----
-
-## Results
-
-### Performance Comparison
-
-| Model | MAE | MSE | QLIKE | Improvement over Naive |
-|-------|-----|-----|-------|------------------------|
-| Naive Baseline | 0.632 | 1.583 | 0.506 | — |
-| GARCH(1,1) | 0.507 | 1.001 | 0.318 | 20% MAE |
-| GRU (Pure) | 0.543 | 1.121 | 0.395 | 14% MAE |
-| **Hybrid (GARCH+GRU)** | **0.436** | **0.833** | **0.249** | **31% MAE, 51% QLIKE** |
-
-### Interpretation
-
-1. **Hybrid Efficiency**: The Hybrid model's success confirms that GARCH explains most of the variance, but systematic errors remain. The GRU component successfully learns to predict these residuals, effectively "boosting" the GARCH forecast.
-2. **GARCH's Role**: Acts as a robust baseline, capturing the heavy-tailed distribution (Student-t) better than a pure neural network with MSE loss.
-3. **Regime sensitivity**: The large improvement suggests that during high-volatility regimes (COVID-19), the relationship between returns and volatility becomes non-linear in ways simple GARCH cannot capture.
-
----
+   *Key libraries: `tensorflow`, `arch`, `pandas`, `numpy`, `scikit-learn`, `statsmodels`.*
+
+3. **Running the Models:**
+   * To reproduce the **Winning Result**, open garch-gru-bench.ipynb.
+   * To view the statistical properties of the data, open Desc-stats.ipynb.
 
 ## Future Directions
 
-### High Priority
-
-| Task | Rationale |
-|------|-----------|
-| **Diebold-Mariano test** | Establish statistical significance |
-| **Rolling-window evaluation** | Assess robustness across regimes |
-| **Expand GRU features** | Add VIX, volume, sentiment, cross-asset correlations |
-
-### Medium Priority
-
-- Compare asymmetric variants (GJR-GARCH, EGARCH)
-- Implement HAR-RV benchmark
-- Hyperparameter optimization for GRU
-- Ensemble methods (GARCH + NN)
-
-### Research Extensions
-
-- Retrieval-Augmented Forecasting (RAF) integration
-- Longer forecast horizons (5-day, 21-day)
-- Multi-asset portfolio volatility
-- Value at Risk (VaR) backtesting
+* **Multivariate Analysis:** Incorporating VIX and volume data into the GRU component.
+* **Statistical Significance:** Conducting Diebold-Mariano tests to formally assess the Hybrid model's superiority.
+* **Retrieval Augmented Forecasting (RAF):** Early experiments (documented in README_RAF.md) suggest identifying similar historical volatility regimes using Vector Databases (FAISS) can further improve forecasts.
 
 ---
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Technical Report](../Docs/report/Realized_Volatility_Forecasting_Report.md) | Full research report with methodology details |
-| [Evaluation Framework](../Docs/Evaluation.md) | Guide to volatility model evaluation |
-| [RAF Overview](../README_RAF.md) | Retrieval-Augmented Forecasting methodology |
-
----
-
-## Notebook Guide
-
-| Notebook | Purpose |
-|----------|---------|
-| `DataEngineering.ipynb` | Data preprocessing pipeline |
-| `Desc-stats.ipynb` | Exploratory analysis (skewness, kurtosis, Hurst) |
-| `ARCH-benchmark.ipynb` | GARCH model implementation |
-| `GRU-benchmark.ipynb` | GRU training and evaluation |
-| `Hybrid/Main.ipynb` | **Hybrid GARCH+GRU model** (Best Performer) |
-| `GRU-GARCH-Benchmark.ipynb` | Head-to-head comparison | You want direct comparison results |
-| `SP500_GK-vol-GRU-comp-GARCH.ipynb` | Garman-Klass volatility experiments | You want alternative volatility measures |
-
----
-
-## Acknowledgments
-
-- **Data**: SPY intraday prices sourced via kaggle and yfinance
-- **Libraries**: TensorFlow, arch, scikit-learn, pandas ecosystems
-- **Literature**: Andersen et al. (2001), Patton (2011), Hansen & Lunde (2005)
-
----
-
-<div align="center">
-
-**Built for quantitative finance research** | **S&P 500 Volatility Forecasting** | **Deep Learning vs. Econometrics**
-
-</div>
