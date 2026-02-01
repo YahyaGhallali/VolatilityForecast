@@ -1,3 +1,4 @@
 Docs/Report/*.png
+Docs/Report/images/*
 Docs/Report/*.tex
 Docs/Report/*.gz
